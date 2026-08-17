@@ -17,8 +17,11 @@ hardening) verified end-to-end against a real non-prod Auth0 tenant, real
 local Redis, and a real locally-running backend. `.github/workflows/ci.yml`
 mirrors `tdff-backend`'s QA pipeline (lint, format check, vet, test +
 coverage, build, a real-Redis integration job, Snyk) with a gated deploy to
-Vercel prod on push to `main`. See "CI/CD" and "Deployment" below for the
-one-time setup this needs in GitHub/Vercel/Upstash/Auth0.
+Vercel prod on push to `main`. GitHub secrets, Vercel prod env vars, and
+branch protection (PRs required on `main`, all QA jobs must pass, no direct
+pushes even for admins) are all configured — this repo's changes now go
+through a feature branch + PR. See "CI/CD" and "Deployment" below for the
+full one-time setup this needed.
 
 **Hardening (`internal/middleware`)**:
 - `RequireCustomHeader` — CSRF defense-in-depth on `/api/*` only. The SPA
