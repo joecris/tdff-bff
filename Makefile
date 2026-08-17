@@ -1,4 +1,4 @@
-.PHONY: run build test coverage lint vet docker-up docker-down tidy
+.PHONY: run build test test-integration coverage lint fmt-check vet docker-up docker-down tidy
 
 # cmd/server is composition-root wiring (reads env, constructs real
 # dependencies, calls ListenAndServe) — there's no meaningful behavior in it
@@ -24,6 +24,9 @@ build: ## Build the server binary
 test: ## Run tests with race detector
 	go test ./... -race
 
+test-integration: ## Run tests gated behind the `integration` build tag (need a real Redis at REDIS_URL, default redis://localhost:6379)
+	go test -tags=integration ./... -v
+
 coverage: ## Run tests with coverage and enforce COVERAGE_THRESHOLD (internal/... only; see note above)
 	go test ./internal/... -coverprofile=coverage.out
 	@go tool cover -func=coverage.out | tail -1
@@ -38,6 +41,12 @@ vet: ## Run go vet
 
 lint: ## Run golangci-lint (install: https://golangci-lint.run/usage/install/)
 	golangci-lint run ./...
+
+fmt-check: ## Fail if any file isn't gofmt'd (check-only, never writes — CI uses this instead of `gofmt -w`)
+	@unformatted=$$(gofmt -l .); \
+	if [ -n "$$unformatted" ]; then \
+		echo "not gofmt'd:"; echo "$$unformatted"; exit 1; \
+	fi
 
 docker-up: ## Start local Redis (and future local proxy) for dev
 	docker compose up -d

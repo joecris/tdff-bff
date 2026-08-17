@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancels a superseded run on the same branch/PR — mirrors tdff-backend's
+# workflow, same rationale (saves CI minutes on rapid successive pushes).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Check-only — CI must never write files back, only fail if
+      # something wasn't run through `gofmt` before committing.
+      - run: make fmt-check
+
+  vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make vet
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make test
+      - run: make coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 14
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make build
+
+  # session.Store tested against a real redis-server, not just miniredis —
+  # independent of docker-compose.yml (that file is for local dev only).
+  # Same shape as tdff-backend's real-Postgres integration job.
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make test-integration
+
+  # Dependency vulnerability scan — see README's CI section for the
+  # one-time SNYK_TOKEN + Snyk service-account setup this depends on
+  # (shared with tdff-backend's Snyk org). Pinned to a released
+  # major-version tag, not the mutable `master` ref, for supply-chain
+  # safety.
+  snyk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: snyk/actions/golang@v1
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          # Same starting threshold as tdff-backend — a fresh dependency
+          # tree almost always has some low/medium transitive noise; start
+          # at `high` and tighten once a real baseline is known.
+          args: --severity-threshold=high
+
+  # Runs only after every QA gate above passes, and only for an actual push
+  # to `main` (never a PR). No non-prod Vercel deployment exists yet (see
+  # the plan's "Non-prod BFF" decision), so this always deploys prod — a
+  # non-prod deploy job can be added once there's a non-prod backend/SPA to
+  # pair it with. Unlike tdff-backend's deploy job, there's no migration
+  # step: the BFF has no database of its own.
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [lint, format, vet, test, build, integration, snyk]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel (production)
+        env:
+          # No committed .vercel/project.json (gitignored) — these two env
+          # vars are the Vercel CLI's own documented alternative for CI use.
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"

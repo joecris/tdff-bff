@@ -32,7 +32,16 @@ func New(deps Deps) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// Deliberately not using chi's middleware.RealIP: it blindly trusts
+	// X-Forwarded-For/X-Real-IP from whoever's directly connecting, which
+	// is spoofable unless the app validates that the connection actually
+	// came through a trusted proxy first (see GHSA-3fxj-6jh8-hvhx and the
+	// deprecation notice on the middleware itself). Its only use here would
+	// have been cosmetic — accurate client IPs in access logs — not
+	// anything security-decision-bearing (no IP-based rate limiting or
+	// allowlisting exists yet). If that changes, the fix is to trust
+	// specifically Vercel's forwarding headers, not a general-purpose
+	// implementation that trusts whatever's on the wire.
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))

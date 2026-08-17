@@ -12,14 +12,13 @@ architectural changes).
 
 ## Status
 
-Phase 5 (hardening) — Auth0 Authorization Code + PKCE login, callback,
-logout, `/bff/auth/session`, and `/api/*` proxying to the backend API, all
-verified end-to-end against a real non-prod Auth0 tenant, real local Redis,
-and a real locally-running backend. Sessions persist in Redis
-(`internal/store/redis`, standard go-redis over TCP+TLS).
-`internal/store/memory` remains only as a dependency-free test double; it's
-no longer wired into `main.go`. GitHub Actions CI/CD to Vercel lands in
-Phase 6.
+Phase 6 (CI/CD) — all prior phases (auth flow, Redis sessions, API proxy,
+hardening) verified end-to-end against a real non-prod Auth0 tenant, real
+local Redis, and a real locally-running backend. `.github/workflows/ci.yml`
+mirrors `tdff-backend`'s QA pipeline (lint, format check, vet, test +
+coverage, build, a real-Redis integration job, Snyk) with a gated deploy to
+Vercel prod on push to `main`. See "CI/CD" and "Deployment" below for the
+one-time setup this needs in GitHub/Vercel/Upstash/Auth0.
 
 **Hardening (`internal/middleware`)**:
 - `RequireCustomHeader` — CSRF defense-in-depth on `/api/*` only. The SPA
@@ -73,6 +72,11 @@ make run                 # starts the BFF on :8080
 curl localhost:8080/healthz
 ```
 
+Other useful targets: `make test` (race detector), `make coverage`
+(threshold-enforced), `make test-integration` (needs a real Redis at
+`REDIS_URL`, e.g. from `make docker-up`), `make fmt-check` / `make lint` /
+`make vet` (same checks CI runs).
+
 ## Project layout
 
 - `cmd/server` — entrypoint; Vercel's Go Framework Preset auto-detects this path.
@@ -81,10 +85,99 @@ curl localhost:8080/healthz
 - `internal/auth`, `internal/session`, `internal/store/redis`,
   `internal/handlers`, `internal/proxy`, `internal/middleware` — Phases
   2–5, done.
+- `.github/workflows/ci.yml` — Phase 6, done (see "CI/CD" below).
+
+## CI/CD
+
+`.github/workflows/ci.yml` runs on every PR and push to `main`: lint
+(`golangci-lint`), `gofmt` check, `go vet`, unit tests + coverage (75%
+threshold via `make coverage`), a build, a real-Redis integration job
+(`redis:7-alpine` service container — independent of `docker-compose.yml`,
+which is local-dev-only), and a Snyk dependency scan. `deploy` runs only
+after every job above passes, only on a push to `main`.
+
+**One-time setup this repo needs** (not in the workflow file):
+
+1. In Snyk: reuse the existing service account token from `tdff-backend`
+   (org Settings → Service Accounts) — no new Snyk account needed.
+2. In GitHub (this repo's Settings → Secrets and variables → Actions), add:
+   - `SNYK_TOKEN` — same value as above.
+   - `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` — see "Deployment"
+     below for how to get the latter two.
+3. (Recommended) Settings → Branches: require the CI jobs to pass before
+   merging into `main`.
+4. (Recommended, free) Settings → Code security and analysis: enable
+   Dependabot alerts + security updates.
+
+The Snyk gate starts at `--severity-threshold=high` (a fresh dependency
+tree almost always has some low/medium transitive noise) — tighten once a
+real baseline is known.
 
 ## Deployment
 
-Deploys to Vercel via GitHub Actions (see `.github/workflows/deploy.yml` once
-added in Phase 6), using the Go Framework Preset (`vercel.json`). Non-prod
-and prod are separate Vercel environments backed by separate Auth0 tenants
-and separate Upstash Redis databases.
+Prod domains: BFF `https://tdff-bff.vercel.app`, SPA `https://tdff-app.vercel.app`,
+backend API `https://tdff-backend.vercel.app` (already live).
+
+**Important**: `vercel.app` is on the Public Suffix List, so the SPA and BFF
+subdomains are fully separate origins to the browser — the same-origin
+rewrite below isn't an optimization, it's what makes cookies/CSRF work at
+all here. `AUTH0_CALLBACK_URL` therefore points at the **SPA's** domain, not
+the BFF's own: the browser needs to land back on the origin it's already on
+so the session cookie ends up there too, not on a domain the SPA can't read
+from.
+
+**Vercel project (this repo)**:
+- Framework preset: Go (already set in `vercel.json`).
+- Do **not** connect Vercel's GitHub App/native Git integration — deploys
+  go through the CLI from GitHub Actions only (`vercel deploy --prod` in
+  the `deploy` job). Connecting the native integration on top would also
+  auto-deploy a preview on every push/PR, which isn't wanted (see the
+  plan's "Non-prod BFF" decision — deferred until there's a non-prod
+  backend/SPA to pair it with).
+- Get `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` by running `vercel link` once
+  locally against the project (writes `.vercel/project.json`, gitignored)
+  and reading the values out of that file.
+- Environment Variables (Project Settings → Environment Variables,
+  Production scope — `PORT` is injected by Vercel, don't set it):
+
+  ```
+  APP_ENV=prod
+  AUTH0_DOMAIN=<prod tenant domain>
+  AUTH0_CLIENT_ID=<prod app client id>
+  AUTH0_CLIENT_SECRET=<prod app client secret>
+  AUTH0_AUDIENCE=<prod API identifier, matching the backend's configuration>
+  AUTH0_CALLBACK_URL=https://tdff-app.vercel.app/bff/auth/callback
+  AUTH0_LOGOUT_REDIRECT_URL=https://tdff-app.vercel.app/
+  REDIS_URL=<Upstash prod rediss:// connection string>
+  BACKEND_API_BASE_URL=https://tdff-backend.vercel.app
+  LOG_LEVEL=info
+  ```
+
+**Upstash**: one Redis database (prod), region matched to wherever the
+Vercel functions run. Use the plain `rediss://` TCP connection string (not
+the REST API variant — this app uses standard `go-redis`, not the REST
+client, since the Go Framework Preset runs a real long-lived process
+rather than the Edge Runtime the REST client is meant for).
+
+**Auth0**: a separate prod tenant + Application (Regular Web App, Refresh
+Token grant enabled) + API (Allow Offline Access enabled) — same shape as
+the working non-prod one, see above. Allowed Callback URLs =
+`https://tdff-app.vercel.app/bff/auth/callback`; Allowed Logout URLs =
+`https://tdff-app.vercel.app/`.
+
+**SPA repo** (not this repo, but a hard dependency — hand this to whoever
+owns it): a `vercel.json` rewrite so the browser only ever talks to
+`tdff-app.vercel.app`:
+
+```json
+{
+  "rewrites": [
+    { "source": "/bff/:path*", "destination": "https://tdff-bff.vercel.app/bff/:path*" },
+    { "source": "/api/:path*", "destination": "https://tdff-bff.vercel.app/api/:path*" }
+  ]
+}
+```
+
+And every fetch/XHR call the SPA makes to `/api/*` must send
+`X-Requested-With: XMLHttpRequest` — the CSRF defense-in-depth header
+`internal/middleware.RequireCustomHeader` requires (see "Hardening" above).

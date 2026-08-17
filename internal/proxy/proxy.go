@@ -61,21 +61,26 @@ func Handler(cfg *config.Config, refresher Refresher, store session.Store) (http
 		return nil, fmt.Errorf("proxy: parse BACKEND_API_BASE_URL: %w", err)
 	}
 
-	rp := httputil.NewSingleHostReverseProxy(target)
-
-	// ReverseProxy forwards via RoundTrip, not Client.Do — it never follows
-	// redirects on our behalf. A 3xx from the backend is relayed to the
-	// caller as-is, satisfying the "no blind redirect-following"
-	// requirement without extra code here.
-	baseDirector := rp.Director
-	rp.Director = func(r *http.Request) {
-		baseDirector(r)
-		r.Host = target.Host
-	}
-
-	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("proxy: upstream request failed: %v", err)
-		http.Error(w, "upstream request failed", http.StatusBadGateway)
+	rp := &httputil.ReverseProxy{
+		// ReverseProxy forwards via RoundTrip, not Client.Do — it never
+		// follows redirects on our behalf. A 3xx from the backend is
+		// relayed to the caller as-is, satisfying the "no blind
+		// redirect-following" requirement without extra code here.
+		//
+		// Rewrite (not the older Director field, deprecated since Go
+		// 1.26): SetURL points the outbound request at the backend
+		// (rewriting scheme/host/Host-header; target has no path
+		// component, so the incoming path forwards unchanged).
+		// SetXForwarded sets X-Forwarded-For/Host/Proto so the backend
+		// sees accurate origin info despite the proxy hop.
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.SetXForwarded()
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			log.Printf("proxy: upstream request failed: %v", err)
+			http.Error(w, "upstream request failed", http.StatusBadGateway)
+		},
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

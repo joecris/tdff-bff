@@ -16,6 +16,9 @@ coverage.out
 # Vercel
 .vercel
 
+# Local Redis persistence (from running redis-server directly outside Docker)
+dump.rdb
+
 # IDE / OS
 .DS_Store
 .idea/
