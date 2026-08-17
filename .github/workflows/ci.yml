@@ -20,7 +20,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      # v6's "latest" resolves to a golangci-lint v1.x build (built with an
+      # older Go toolchain than this module's `go 1.26.4` directive, which
+      # golangci-lint refuses to lint against) — v6 predates golangci-lint
+      # v2 support. v9 is current as of writing and installs a v2 binary
+      # matching what's used locally.
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
 
