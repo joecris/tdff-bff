@@ -11,6 +11,7 @@ import (
 
 	"github.com/joecris/tdff-bff/internal/auth"
 	"github.com/joecris/tdff-bff/internal/config"
+	"github.com/joecris/tdff-bff/internal/proxy"
 	"github.com/joecris/tdff-bff/internal/router"
 	redisstore "github.com/joecris/tdff-bff/internal/store/redis"
 )
@@ -46,6 +47,17 @@ func main() {
 		deps.Auth = authClient
 		deps.Store = store
 		log.Printf("auth: enabled against %s (session store: redis)", cfg.Auth0Domain)
+
+		if err := cfg.RequireBackendAPI(); err != nil {
+			log.Printf("proxy: disabled (%v) — /api/* is not mounted", err)
+		} else {
+			proxyHandler, err := proxy.Handler(cfg, authClient, store)
+			if err != nil {
+				log.Fatalf("proxy: %v", err)
+			}
+			deps.Proxy = proxyHandler
+			log.Printf("proxy: enabled, forwarding /api/* to %s", cfg.BackendAPIBaseURL)
+		}
 	}
 
 	handler := router.New(deps)

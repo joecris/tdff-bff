@@ -18,13 +18,12 @@ import (
 	"github.com/joecris/tdff-bff/internal/session"
 )
 
-// Deps are the dependencies routes need. Phase 4 will add a proxy target
-// here; Phase 3 swaps Store's concrete type (memory -> Redis) without any
-// change to this struct's shape.
+// Deps are the dependencies routes need.
 type Deps struct {
 	Config *config.Config
 	Auth   *auth.Client // nil until Phase 2 config/client wiring is present
 	Store  session.Store
+	Proxy  http.Handler // nil until Phase 4 config wiring is present; see internal/proxy
 }
 
 // New builds the top-level router.
@@ -51,7 +50,13 @@ func New(deps Deps) http.Handler {
 		})
 	}
 
-	// TODO(phase 4): mount proxy.Routes(r, ...) under /bff/api
+	if deps.Proxy != nil {
+		// Mounted at /api/*, not nested under /bff: the backend already
+		// namespaces its own routes under /api, so the path forwards
+		// unchanged (see internal/proxy's doc comment). /bff/auth/* stays
+		// the only BFF-owned namespace, so there's no collision.
+		r.Handle("/api/*", deps.Proxy)
+	}
 
 	return r
 }
