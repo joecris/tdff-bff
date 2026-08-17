@@ -12,7 +12,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	cfg := &config.Config{AppEnv: "test"}
-	h := router.New(cfg)
+	h := router.New(router.Deps{Config: cfg})
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()

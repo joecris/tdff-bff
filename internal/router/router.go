@@ -12,13 +12,23 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/joecris/tdff-bff/internal/auth"
 	"github.com/joecris/tdff-bff/internal/config"
+	"github.com/joecris/tdff-bff/internal/handlers"
+	"github.com/joecris/tdff-bff/internal/session"
 )
 
-// New builds the top-level router. Deps that later phases' route groups
-// need (session store, Auth0 client, proxy) get threaded through here once
-// those packages exist — Phase 1 only has the health check.
-func New(cfg *config.Config) http.Handler {
+// Deps are the dependencies routes need. Phase 4 will add a proxy target
+// here; Phase 3 swaps Store's concrete type (memory -> Redis) without any
+// change to this struct's shape.
+type Deps struct {
+	Config *config.Config
+	Auth   *auth.Client // nil until Phase 2 config/client wiring is present
+	Store  session.Store
+}
+
+// New builds the top-level router.
+func New(deps Deps) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -30,9 +40,17 @@ func New(cfg *config.Config) http.Handler {
 	// Unauthenticated infra health check. Deliberately outside any /bff
 	// prefix: it's hit directly by Vercel/uptime checks, not proxied
 	// same-origin from the SPA.
-	r.Get("/healthz", handleHealthz(cfg))
+	r.Get("/healthz", handleHealthz(deps.Config))
 
-	// TODO(phase 2): mount auth.Routes(r, ...) under /bff/auth
+	if deps.Auth != nil && deps.Store != nil {
+		r.Route("/bff/auth", func(r chi.Router) {
+			r.Get("/login", handlers.Login(deps.Auth))
+			r.Get("/callback", handlers.Callback(deps.Auth, deps.Store, deps.Config))
+			r.Get("/logout", handlers.Logout(deps.Auth, deps.Store, deps.Config))
+			r.Get("/session", handlers.SessionInfo(deps.Store, deps.Config))
+		})
+	}
+
 	// TODO(phase 4): mount proxy.Routes(r, ...) under /bff/api
 
 	return r

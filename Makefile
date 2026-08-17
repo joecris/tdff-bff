@@ -1,6 +1,14 @@
 .PHONY: run build test lint vet docker-up docker-down tidy
 
-run: ## Run the BFF locally (reads .env if present via your shell/dotenv tool of choice)
+# Load .env into every target's environment, if present. `include` parses it
+# as Makefile syntax (fine for plain KEY=value lines, which is all .env
+# uses); `export` forwards those variables to child processes like `go run`.
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
+run: ## Run the BFF locally (.env is loaded automatically if present)
 	go run ./cmd/server
 
 build: ## Build the server binary

@@ -26,6 +26,12 @@ type Config struct {
 	Auth0CallbackURL       string
 	Auth0LogoutRedirectURL string
 
+	// PostLoginRedirectURL is where the browser is sent after a successful
+	// callback. Defaults to Auth0LogoutRedirectURL (the SPA base URL) when
+	// unset, so it doesn't need to be a required var — set it explicitly
+	// once login and logout should land on different routes.
+	PostLoginRedirectURL string
+
 	// Session / Redis — required starting Phase 3 (session + Redis)
 	RedisURL          string
 	SessionCookieName string
@@ -51,6 +57,7 @@ func Load() (*Config, error) {
 		Auth0Audience:          os.Getenv("AUTH0_AUDIENCE"),
 		Auth0CallbackURL:       os.Getenv("AUTH0_CALLBACK_URL"),
 		Auth0LogoutRedirectURL: os.Getenv("AUTH0_LOGOUT_REDIRECT_URL"),
+		PostLoginRedirectURL:   os.Getenv("POST_LOGIN_REDIRECT_URL"),
 
 		RedisURL:          os.Getenv("REDIS_URL"),
 		SessionCookieName: getEnv("SESSION_COOKIE_NAME", "__Host-tdff-session"),
@@ -63,6 +70,10 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.SessionTTLSeconds = ttl
+
+	if cfg.PostLoginRedirectURL == "" {
+		cfg.PostLoginRedirectURL = cfg.Auth0LogoutRedirectURL
+	}
 
 	return cfg, nil
 }

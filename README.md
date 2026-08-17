@@ -12,8 +12,18 @@ architectural changes).
 
 ## Status
 
-Phase 1 (skeleton) — module scaffold, config loader, `/healthz`. Auth,
-sessions, and the API proxy land in later phases per the roadmap above.
+Phase 2 (auth flow) — Auth0 Authorization Code + PKCE login, callback,
+logout, and `/bff/auth/session`, verified end-to-end against a real non-prod
+Auth0 tenant. Session data is currently held in an in-memory store
+(`internal/store/memory`) as a Phase 2 stand-in; Phase 3 replaces it with
+Redis. The API proxy lands in Phase 4.
+
+Auth0 app setup notes (non-prod tenant already configured this way — carry
+these over when the prod tenant/app is provisioned):
+- Application Type: **Regular Web Application**, with the **Refresh Token**
+  grant type enabled.
+- The API (`AUTH0_AUDIENCE`) has **Allow Offline Access** enabled — required
+  for Auth0 to issue a `refresh_token` alongside the access token.
 
 ## Local development
 
