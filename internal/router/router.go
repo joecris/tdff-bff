@@ -15,6 +15,7 @@ import (
 	"github.com/joecris/tdff-bff/internal/auth"
 	"github.com/joecris/tdff-bff/internal/config"
 	"github.com/joecris/tdff-bff/internal/handlers"
+	bffmw "github.com/joecris/tdff-bff/internal/middleware"
 	"github.com/joecris/tdff-bff/internal/session"
 )
 
@@ -36,26 +37,44 @@ func New(deps Deps) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// Unauthenticated infra health check. Deliberately outside any /bff
-	// prefix: it's hit directly by Vercel/uptime checks, not proxied
-	// same-origin from the SPA.
-	r.Get("/healthz", handleHealthz(deps.Config))
+	// SecurityHeaders is scoped to this group — the routes the BFF answers
+	// itself (health check, auth redirects/errors) — not applied globally.
+	// /api/* is deliberately excluded: httputil.ReverseProxy *appends* the
+	// backend's own response headers rather than replacing whatever's
+	// already on the ResponseWriter, so a blanket r.Use(SecurityHeaders)
+	// would leave every proxied response with two, sometimes conflicting,
+	// copies of headers like Content-Security-Policy and X-Frame-Options.
+	// The backend already sends its own complete set; let it own that for
+	// its own responses.
+	r.Group(func(r chi.Router) {
+		r.Use(bffmw.SecurityHeaders)
 
-	if deps.Auth != nil && deps.Store != nil {
-		r.Route("/bff/auth", func(r chi.Router) {
-			r.Get("/login", handlers.Login(deps.Auth))
-			r.Get("/callback", handlers.Callback(deps.Auth, deps.Store, deps.Config))
-			r.Get("/logout", handlers.Logout(deps.Auth, deps.Store, deps.Config))
-			r.Get("/session", handlers.SessionInfo(deps.Store, deps.Config))
-		})
-	}
+		// Unauthenticated infra health check. Deliberately outside any
+		// /bff prefix: it's hit directly by Vercel/uptime checks, not
+		// proxied same-origin from the SPA.
+		r.Get("/healthz", handleHealthz(deps.Config))
+
+		if deps.Auth != nil && deps.Store != nil {
+			r.Route("/bff/auth", func(r chi.Router) {
+				r.Get("/login", handlers.Login(deps.Auth))
+				r.Get("/callback", handlers.Callback(deps.Auth, deps.Store, deps.Config))
+				r.Get("/logout", handlers.Logout(deps.Auth, deps.Store, deps.Config))
+				r.Get("/session", handlers.SessionInfo(deps.Store, deps.Config))
+			})
+		}
+	})
 
 	if deps.Proxy != nil {
 		// Mounted at /api/*, not nested under /bff: the backend already
 		// namespaces its own routes under /api, so the path forwards
 		// unchanged (see internal/proxy's doc comment). /bff/auth/* stays
 		// the only BFF-owned namespace, so there's no collision.
-		r.Handle("/api/*", deps.Proxy)
+		//
+		// CSRF defense-in-depth (bffmw.RequireCustomHeader) is applied
+		// here, not on /bff/auth/*: those endpoints are top-level browser
+		// navigations (redirects, links) that can never carry a custom
+		// header in the first place, so the check would only ever fail.
+		r.Handle("/api/*", bffmw.RequireCustomHeader(deps.Proxy))
 	}
 
 	return r

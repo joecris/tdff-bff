@@ -12,14 +12,36 @@ architectural changes).
 
 ## Status
 
-Phase 4 (API proxy) — Auth0 Authorization Code + PKCE login, callback,
+Phase 5 (hardening) — Auth0 Authorization Code + PKCE login, callback,
 logout, `/bff/auth/session`, and `/api/*` proxying to the backend API, all
 verified end-to-end against a real non-prod Auth0 tenant, real local Redis,
 and a real locally-running backend. Sessions persist in Redis
 (`internal/store/redis`, standard go-redis over TCP+TLS).
 `internal/store/memory` remains only as a dependency-free test double; it's
-no longer wired into `main.go`. Security hardening (CSRF header enforcement,
-security headers) lands in Phase 5.
+no longer wired into `main.go`. GitHub Actions CI/CD to Vercel lands in
+Phase 6.
+
+**Hardening (`internal/middleware`)**:
+- `RequireCustomHeader` — CSRF defense-in-depth on `/api/*` only. The SPA
+  must send `X-Requested-With: XMLHttpRequest` on every proxied call; a
+  cross-site form/`<img>` can never set that header, so this forces a CORS
+  preflight this same-origin deployment doesn't answer. Not applied to
+  `/bff/auth/*`, which are top-level browser navigations (redirects, links)
+  that can never carry a custom header anyway.
+- `SecurityHeaders` — `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, a strict `Content-Security-Policy`, `Permissions-Policy`,
+  and `Strict-Transport-Security` on every BFF-originated response
+  (`/healthz`, `/bff/auth/*`). **Deliberately not applied to `/api/*`**: an
+  earlier version applied it globally, which left every proxied response
+  with two copies of these headers — ours plus the backend's own, since
+  `httputil.ReverseProxy` appends the upstream's headers rather than
+  replacing what's already set. The backend owns its own response headers;
+  regression-tested in `internal/router`.
+- Cookie audit against the RFC checklist: session cookie is `__Host-`
+  prefixed, `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, no `Domain`
+  attribute. `config.SessionCookieHasRecommendedPrefix` logs a startup
+  warning (non-fatal) if `SESSION_COOKIE_NAME` is ever overridden away from
+  the `__Host-` prefix.
 
 **Path convention**: `/bff/auth/*` is the only BFF-owned namespace (login,
 callback, logout, session). Everything else — `/api/*` — is proxied to the
@@ -57,8 +79,8 @@ curl localhost:8080/healthz
 - `internal/config` — env var loading/validation, grouped by phase.
 - `internal/router` — route composition + middleware chain.
 - `internal/auth`, `internal/session`, `internal/store/redis`,
-  `internal/handlers`, `internal/proxy` — Phases 2–4, done.
-- `internal/middleware` — CSRF/security headers, lands in Phase 5.
+  `internal/handlers`, `internal/proxy`, `internal/middleware` — Phases
+  2–5, done.
 
 ## Deployment
 

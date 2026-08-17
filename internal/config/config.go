@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Config holds every environment-derived setting the BFF needs. Fields are
@@ -105,6 +106,17 @@ func (c *Config) RequireBackendAPI() error {
 	return requireAll(map[string]string{
 		"BACKEND_API_BASE_URL": c.BackendAPIBaseURL,
 	})
+}
+
+// SessionCookieHasRecommendedPrefix reports whether SessionCookieName uses
+// the __Host- prefix. This isn't just convention: browsers independently
+// enforce Secure, no Domain attribute, and Path=/ for any cookie named with
+// it, layering a browser-side guarantee on top of the attributes
+// session.SetSessionCookie already sets explicitly. Non-fatal if false —
+// callers should log a warning, not fail startup, since the cookie still
+// gets the right attributes regardless of its name.
+func (c *Config) SessionCookieHasRecommendedPrefix() bool {
+	return strings.HasPrefix(c.SessionCookieName, "__Host-")
 }
 
 func requireAll(vars map[string]string) error {

@@ -21,6 +21,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	if !cfg.SessionCookieHasRecommendedPrefix() {
+		log.Printf("config: WARNING: SESSION_COOKIE_NAME %q doesn't use the __Host- prefix; "+
+			"the cookie still gets Secure/no-Domain/Path=/ explicitly, but loses the browser's "+
+			"independent enforcement of those — see the RFC's cookie checklist", cfg.SessionCookieName)
+	}
 
 	deps := router.Deps{Config: cfg}
 

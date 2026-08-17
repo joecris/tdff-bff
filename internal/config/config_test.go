@@ -170,3 +170,12 @@ func TestRequireBackendAPI(t *testing.T) {
 		t.Error("expected an error with BackendAPIBaseURL missing")
 	}
 }
+
+func TestSessionCookieHasRecommendedPrefix(t *testing.T) {
+	if !(&config.Config{SessionCookieName: "__Host-tdff-session"}).SessionCookieHasRecommendedPrefix() {
+		t.Error("expected __Host-tdff-session to have the recommended prefix")
+	}
+	if (&config.Config{SessionCookieName: "tdff-session"}).SessionCookieHasRecommendedPrefix() {
+		t.Error("expected tdff-session to not have the recommended prefix")
+	}
+}
