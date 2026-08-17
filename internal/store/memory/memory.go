@@ -1,8 +1,11 @@
-// Package memory implements session.Store in-process. It exists to let the
-// auth flow be built and tested before Phase 3 wires up Redis, and is not
-// suitable beyond that: state is lost on restart and isn't shared across
-// instances, which breaks the moment there's more than one BFF process
-// running (Vercel does not guarantee a single instance).
+// Package memory implements session.Store in-process. It was the Phase 2
+// stand-in before Redis landed (internal/store/redis); main.go no longer
+// wires it up. It stays around as a dependency-free fake for tests that
+// exercise session.Store-consuming code (handlers, etc.) without needing a
+// real or fake Redis. Not suitable for running the server: state is lost on
+// restart and isn't shared across instances, which breaks the moment
+// there's more than one BFF process running (Vercel does not guarantee a
+// single instance).
 package memory
 
 import (

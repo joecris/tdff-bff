@@ -12,7 +12,7 @@ import (
 	"github.com/joecris/tdff-bff/internal/auth"
 	"github.com/joecris/tdff-bff/internal/config"
 	"github.com/joecris/tdff-bff/internal/router"
-	"github.com/joecris/tdff-bff/internal/store/memory"
+	redisstore "github.com/joecris/tdff-bff/internal/store/redis"
 )
 
 func main() {
@@ -23,22 +23,29 @@ func main() {
 
 	deps := router.Deps{Config: cfg}
 
-	if err := cfg.RequireAuth0(); err != nil {
-		log.Printf("auth: disabled (%v) — only /healthz is mounted", err)
-	} else {
+	switch {
+	case cfg.RequireAuth0() != nil:
+		log.Printf("auth: disabled (%v) — only /healthz is mounted", cfg.RequireAuth0())
+	case cfg.RequireRedis() != nil:
+		log.Printf("auth: disabled (%v) — only /healthz is mounted", cfg.RequireRedis())
+	default:
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		authClient, err := auth.NewClient(ctx, cfg)
 		cancel()
 		if err != nil {
 			log.Fatalf("auth: %v", err)
 		}
-		deps.Auth = authClient
 
-		// Phase 3 replaces this with a Redis-backed store; see
-		// internal/store/memory's doc comment for why it can't stay this
-		// way past local dev / this phase's manual testing.
-		deps.Store = memory.New()
-		log.Printf("auth: enabled against %s (session store: in-memory, Phase 3 replaces this with Redis)", cfg.Auth0Domain)
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		store, err := redisstore.New(ctx, cfg.RedisURL)
+		cancel()
+		if err != nil {
+			log.Fatalf("redis: %v", err)
+		}
+
+		deps.Auth = authClient
+		deps.Store = store
+		log.Printf("auth: enabled against %s (session store: redis)", cfg.Auth0Domain)
 	}
 
 	handler := router.New(deps)

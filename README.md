@@ -12,11 +12,13 @@ architectural changes).
 
 ## Status
 
-Phase 2 (auth flow) — Auth0 Authorization Code + PKCE login, callback,
+Phase 3 (session + Redis) — Auth0 Authorization Code + PKCE login, callback,
 logout, and `/bff/auth/session`, verified end-to-end against a real non-prod
-Auth0 tenant. Session data is currently held in an in-memory store
-(`internal/store/memory`) as a Phase 2 stand-in; Phase 3 replaces it with
-Redis. The API proxy lands in Phase 4.
+Auth0 tenant, with sessions persisted in Redis (`internal/store/redis`,
+standard go-redis over TCP+TLS — verified against both a real local
+`redis-server` and, via `miniredis`, in unit tests without needing Docker).
+`internal/store/memory` remains only as a dependency-free test double; it's
+no longer wired into `main.go`. The API proxy lands in Phase 4.
 
 Auth0 app setup notes (non-prod tenant already configured this way — carry
 these over when the prod tenant/app is provisioned):
@@ -39,8 +41,9 @@ curl localhost:8080/healthz
 - `cmd/server` — entrypoint; Vercel's Go Framework Preset auto-detects this path.
 - `internal/config` — env var loading/validation, grouped by phase.
 - `internal/router` — route composition + middleware chain.
-- `internal/auth`, `internal/session`, `internal/store/redis`, `internal/proxy`,
-  `internal/middleware`, `internal/handlers` — land in Phases 2–5.
+- `internal/auth`, `internal/session`, `internal/store/redis`,
+  `internal/handlers` — Phases 2–3, done.
+- `internal/proxy`, `internal/middleware` — land in Phases 4–5.
 
 ## Deployment
 
