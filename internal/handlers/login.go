@@ -11,7 +11,7 @@ import (
 // Login starts the Authorization Code + PKCE flow: generates a fresh
 // state/nonce/verifier, stashes them in the short-lived transaction cookie,
 // and redirects the browser to Auth0.
-func Login(authClient *auth.Client) http.HandlerFunc {
+func Login(authClient OIDCClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tx := auth.NewTransaction()
 

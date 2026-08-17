@@ -1,4 +1,11 @@
-.PHONY: run build test lint vet docker-up docker-down tidy
+.PHONY: run build test coverage lint vet docker-up docker-down tidy
+
+# cmd/server is composition-root wiring (reads env, constructs real
+# dependencies, calls ListenAndServe) — there's no meaningful behavior in it
+# to unit test independent of an actual process boot, so it's excluded from
+# the coverage gate. Everything with real logic lives in internal/... and is
+# included.
+COVERAGE_THRESHOLD := 75
 
 # Load .env into every target's environment, if present. `include` parses it
 # as Makefile syntax (fine for plain KEY=value lines, which is all .env
@@ -16,6 +23,15 @@ build: ## Build the server binary
 
 test: ## Run tests with race detector
 	go test ./... -race
+
+coverage: ## Run tests with coverage and enforce COVERAGE_THRESHOLD (internal/... only; see note above)
+	go test ./internal/... -coverprofile=coverage.out
+	@go tool cover -func=coverage.out | tail -1
+	@pct=$$(go tool cover -func=coverage.out | tail -1 | awk '{print substr($$3, 1, length($$3)-1)}'); \
+	awk -v pct="$$pct" -v threshold="$(COVERAGE_THRESHOLD)" 'BEGIN { \
+		if (pct+0 < threshold+0) { print "FAIL: coverage " pct "% is below threshold " threshold "%"; exit 1 } \
+		else { print "OK: coverage " pct "% meets threshold " threshold "%" } \
+	}'
 
 vet: ## Run go vet
 	go vet ./...

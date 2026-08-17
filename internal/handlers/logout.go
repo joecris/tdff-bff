@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/joecris/tdff-bff/internal/auth"
 	"github.com/joecris/tdff-bff/internal/config"
 	"github.com/joecris/tdff-bff/internal/session"
 )
@@ -13,7 +12,7 @@ import (
 // server-side-session model means this is enough, no separate token
 // revocation call needed), clears the cookie, and sends the browser to
 // Auth0's /v2/logout so the IdP-side SSO session ends too.
-func Logout(authClient *auth.Client, store session.Store, cfg *config.Config) http.HandlerFunc {
+func Logout(authClient OIDCClient, store session.Store, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if sessionID, err := session.ReadSessionCookie(r, cfg); err == nil {
 			if err := store.Delete(r.Context(), sessionID); err != nil {

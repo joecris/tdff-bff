@@ -33,7 +33,14 @@ type Client struct {
 // ctx and fail fast if the tenant is unreachable — better to know at boot
 // than on the first login attempt.
 func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
-	issuer := "https://" + cfg.Auth0Domain + "/"
+	return newClientWithIssuer(ctx, "https://"+cfg.Auth0Domain+"/", cfg)
+}
+
+// newClientWithIssuer is NewClient with the issuer URL taken as a parameter
+// instead of derived from cfg.Auth0Domain, so tests can point discovery at
+// a local fake OIDC provider (plain http://, no real Auth0 tenant) without
+// touching the network. Production always goes through NewClient.
+func newClientWithIssuer(ctx context.Context, issuer string, cfg *config.Config) (*Client, error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("auth: discover oidc provider at %s: %w", issuer, err)

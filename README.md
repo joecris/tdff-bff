@@ -12,13 +12,28 @@ architectural changes).
 
 ## Status
 
-Phase 3 (session + Redis) — Auth0 Authorization Code + PKCE login, callback,
-logout, and `/bff/auth/session`, verified end-to-end against a real non-prod
-Auth0 tenant, with sessions persisted in Redis (`internal/store/redis`,
-standard go-redis over TCP+TLS — verified against both a real local
-`redis-server` and, via `miniredis`, in unit tests without needing Docker).
+Phase 4 (API proxy) — Auth0 Authorization Code + PKCE login, callback,
+logout, `/bff/auth/session`, and `/api/*` proxying to the backend API, all
+verified end-to-end against a real non-prod Auth0 tenant, real local Redis,
+and a real locally-running backend. Sessions persist in Redis
+(`internal/store/redis`, standard go-redis over TCP+TLS).
 `internal/store/memory` remains only as a dependency-free test double; it's
-no longer wired into `main.go`. The API proxy lands in Phase 4.
+no longer wired into `main.go`. Security hardening (CSRF header enforcement,
+security headers) lands in Phase 5.
+
+**Path convention**: `/bff/auth/*` is the only BFF-owned namespace (login,
+callback, logout, session). Everything else — `/api/*` — is proxied to the
+backend **unchanged**, since the backend already namespaces its own routes
+under `/api`; there's deliberately no extra `/bff` nesting on the proxy, to
+avoid doubling that prefix.
+
+**Test coverage**: `make coverage` enforces a 75% threshold on `internal/...`
+(currently ~87%; `cmd/server` is excluded — it's composition-root wiring with
+no logic to unit test independent of an actual process boot). Network-bound
+code (Auth0 OIDC discovery/token exchange, the backend API) is tested against
+fakes — a minimal in-process OIDC provider (`internal/auth`, signed with a
+throwaway RSA key via `go-jose`) and an `httptest` server — rather than a
+live Auth0 tenant, so CI doesn't need real credentials to enforce coverage.
 
 Auth0 app setup notes (non-prod tenant already configured this way — carry
 these over when the prod tenant/app is provisioned):
@@ -42,8 +57,8 @@ curl localhost:8080/healthz
 - `internal/config` — env var loading/validation, grouped by phase.
 - `internal/router` — route composition + middleware chain.
 - `internal/auth`, `internal/session`, `internal/store/redis`,
-  `internal/handlers` — Phases 2–3, done.
-- `internal/proxy`, `internal/middleware` — land in Phases 4–5.
+  `internal/handlers`, `internal/proxy` — Phases 2–4, done.
+- `internal/middleware` — CSRF/security headers, lands in Phase 5.
 
 ## Deployment
 

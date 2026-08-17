@@ -14,7 +14,7 @@ import (
 // Callback completes the flow Login started: validates the transaction
 // cookie and returned state, exchanges the code for tokens, verifies the ID
 // token, creates a session, and redirects the browser back to the SPA.
-func Callback(authClient *auth.Client, store session.Store, cfg *config.Config) http.HandlerFunc {
+func Callback(authClient OIDCClient, store session.Store, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
