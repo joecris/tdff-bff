@@ -1,0 +1,21 @@
+# Binaries
+/bin/
+/server
+*.exe
+*.test
+
+# Env files (never commit real secrets)
+.env
+.env.*
+!.env.example
+
+# Go
+/vendor/
+
+# Vercel
+.vercel
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/

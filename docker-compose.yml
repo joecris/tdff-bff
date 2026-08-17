@@ -1,0 +1,15 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # TODO(phase 7): add a Caddy service here fronting the local BFF and the
+  # SPA dev server on one port, to reproduce prod's same-origin rewrite
+  # locally (see "Local dev topology" in the plan). Needs the SPA repo's
+  # dev server port confirmed first (open question #2).
