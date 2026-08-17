@@ -156,3 +156,23 @@ func TestCallbackSuccess(t *testing.T) {
 		t.Errorf("unexpected saved session data: %+v", data)
 	}
 }
+
+func TestCallbackRedirectsToReturnToWhenPresent(t *testing.T) {
+	cfg := testConfig()
+	fake := &fakeOIDCClient{exchangeResult: &auth.Result{
+		Subject: "user-1",
+		Email:   "user@example.com",
+		Token:   &oauth2.Token{AccessToken: "at", Expiry: time.Now().Add(time.Hour)},
+	}}
+	h := handlers.Callback(fake, memory.New(), cfg)
+
+	req := requestWithTxn(t, "/bff/auth/callback?code=the-code&state=s", session.Txn{
+		State: "s", Nonce: "n", CodeVerifier: "v", ReturnTo: "/leagues/123/picks",
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if loc := rec.Header().Get("Location"); loc != "/leagues/123/picks" {
+		t.Errorf("expected redirect to the stored returnTo, got %q", loc)
+	}
+}

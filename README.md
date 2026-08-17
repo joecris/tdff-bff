@@ -51,6 +51,22 @@ backend **unchanged**, since the backend already namespaces its own routes
 under `/api`; there's deliberately no extra `/bff` nesting on the proxy, to
 avoid doubling that prefix.
 
+**Endpoints, for SPA integration**:
+- `GET /bff/auth/login?returnTo=<path>` — starts login. `returnTo` is
+  optional; if given, must be a same-origin-relative path starting with a
+  single `/` (an absolute URL, `//host/...`, or anything with a backslash
+  is silently dropped, not errored — falls back to `PostLoginRedirectURL`).
+  Send the SPA's current route here so login round-trips back to where the
+  user actually was, not always the home page. **Must be a real browser
+  navigation** (`window.location.href = ...`), not a `fetch` — it needs to
+  carry the browser through the Auth0 redirect chain.
+- `GET /bff/auth/logout` — same: a real navigation, not `fetch`.
+- `GET /bff/auth/session` — `{authenticated, email}`. Safe to `fetch` with
+  `credentials: 'include'` on app load / route change to check auth state.
+- `/api/*` — proxied backend calls. `fetch` with `credentials: 'include'`
+  and a `X-Requested-With: XMLHttpRequest` header (required — see
+  "Hardening" above; omit it and every proxied call gets a 403).
+
 **Test coverage**: `make coverage` enforces a 75% threshold on `internal/...`
 (currently ~87%; `cmd/server` is excluded — it's composition-root wiring with
 no logic to unit test independent of an actual process boot). Network-bound

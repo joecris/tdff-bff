@@ -21,10 +21,18 @@ const txnTTL = 10 * time.Minute
 // prevents both JS and network tampering, and the values are single-use,
 // short-lived, and meaningless outside a comparison against Auth0's
 // response — encryption would add complexity without closing a real gap.
+//
+// ReturnTo is different in kind from the other three: it's not part of the
+// OIDC exchange, just where Callback sends the browser on success if
+// non-empty (falling back to cfg.PostLoginRedirectURL otherwise). Already
+// validated by SanitizeReturnTo before it's ever stored here — Callback
+// trusts it as-is rather than re-validating, since this cookie is
+// HttpOnly/Secure and single-use.
 type Txn struct {
 	State        string `json:"state"`
 	Nonce        string `json:"nonce"`
 	CodeVerifier string `json:"code_verifier"`
+	ReturnTo     string `json:"return_to,omitempty"`
 }
 
 // SetTxnCookie stores tx for the callback leg of the flow.
