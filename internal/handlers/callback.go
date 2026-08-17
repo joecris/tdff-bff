@@ -80,6 +80,14 @@ func Callback(authClient OIDCClient, store session.Store, cfg *config.Config) ht
 			data.Email, data.RefreshToken != "")
 
 		session.SetSessionCookie(w, sessionID, cfg)
-		http.Redirect(w, r, cfg.PostLoginRedirectURL, http.StatusFound)
+
+		// tx.ReturnTo was already validated by session.SanitizeReturnTo
+		// back in Login, before it was ever written to the (HttpOnly,
+		// Secure, single-use) txn cookie — trusted as-is here.
+		redirectTo := cfg.PostLoginRedirectURL
+		if tx.ReturnTo != "" {
+			redirectTo = tx.ReturnTo
+		}
+		http.Redirect(w, r, redirectTo, http.StatusFound)
 	}
 }
