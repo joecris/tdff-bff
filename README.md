@@ -44,6 +44,14 @@ full one-time setup this needed.
   attribute. `config.SessionCookieHasRecommendedPrefix` logs a startup
   warning (non-fatal) if `SESSION_COOKIE_NAME` is ever overridden away from
   the `__Host-` prefix.
+- Session lifetime (`SESSION_TTL_SECONDS`, default 7 days): a **sliding
+  idle-timeout window**, not a hard expiry — confirmed deliberate, not
+  Auth0-constrained (the non-prod tenant has no maximum refresh token
+  lifetime set, so refresh tokens there are effectively indefinite). Every
+  successful token refresh re-saves the session with a fresh TTL, so an
+  actively-used session renews itself indefinitely; it only expires after
+  this many seconds of *no* requests at all. No absolute session-age cap
+  exists on top of this — revisit if that's ever needed.
 
 **Path convention**: `/bff/auth/*` is the only BFF-owned namespace (login,
 callback, logout, session). Everything else — `/api/*` — is proxied to the
