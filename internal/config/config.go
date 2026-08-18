@@ -66,7 +66,18 @@ func Load() (*Config, error) {
 		BackendAPIBaseURL: os.Getenv("BACKEND_API_BASE_URL"),
 	}
 
-	ttl, err := getEnvInt("SESSION_TTL_SECONDS", 60*60*24*7) // default 7 days
+	// Default 7 days. This is a deliberate BFF-side policy choice, not one
+	// derived from Auth0: the non-prod tenant's Application has "Set
+	// Maximum Refresh Token Lifetime" disabled, so Auth0 imposes no
+	// absolute cap of its own — refresh tokens there are effectively
+	// indefinite. Combined with proxy.Handler re-saving the session (and
+	// its full TTL) on every successful refresh, this value defines a
+	// sliding idle-timeout window, not a hard expiry: an actively-used
+	// session renews itself indefinitely, and only goes idle-expires after
+	// this many seconds with no requests at all. Confirmed as the intended
+	// behavior (not just an unexamined default) rather than adding an
+	// absolute session-age cap on top.
+	ttl, err := getEnvInt("SESSION_TTL_SECONDS", 60*60*24*7)
 	if err != nil {
 		return nil, err
 	}
